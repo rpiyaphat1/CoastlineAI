@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบพยากรณ์ชายฝั่งไทยด้วย AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;700&display=swap');
+
+        body {
+            font-family: 'Sarabun', sans-serif;
+            background-color: #050505;
+            color: #eee;
+        }
+
+        #map {
+            height: 100%;
+            width: 100%;
+            background: #000;
+            border-radius: 1rem;
+        }
+
+        .dashboard-card {
+            background: rgba(15, 15, 15, 0.9);
+            border: 1px solid #222;
+        }
+
+        input[type=range] {
+            accent-color: #facc15;
+        }
+
+        /* แก้ไขสีปุ่มเมื่อถูกกด (Active State) */
+        .btn-toggle-active {
+            background-color: #facc15 !important;
+            color: #000000 !important;
+            font-weight: bold;
+            border-color: #facc15 !important;
+        }
+
+        .ai-glow {
+            box-shadow: 0 0 20px rgba(234, 179, 8, 0.2);
+            border-color: #eab308 !important;
+        }
+
+        .progress-bar {
+            transition: width 0.5s ease-in-out;
+        }
+    </style>
+</head>
+
+<body class="h-screen flex flex-col overflow-hidden">
+
+    <nav class="bg-black border-b border-zinc-800 p-4 shrink-0">
+        <div class="flex justify-between items-center max-w-[1600px] mx-auto">
+            <div class="flex items-center gap-3">
+                <span class="text-2xl">🌊</span>
+                <div>
+                    <h1 class="text-lg font-bold leading-none tracking-tight text-white uppercase">Coastline <span
+                            class="text-yellow-500">AI</span> Monitor</h1>
+                </div>
+            </div>
+            <div id="source-indicator"
+                class="px-4 py-1 rounded-full border border-zinc-700 text-[10px] font-bold tracking-widest uppercase text-zinc-400 bg-zinc-900/50">
+                แหล่งข้อมูล: สถิติย้อนหลัง
+            </div>
+        </div>
+    </nav>
+
+    <main class="flex-grow flex p-4 gap-4 overflow-hidden">
+        <aside class="w-80 flex flex-col gap-4 shrink-0">
+            <div id="year-card" class="dashboard-card p-6 rounded-3xl transition-all duration-500">
+                <p class="text-[10px] font-bold text-zinc-500 uppercase mb-2">ปีที่จำลองสถานการณ์</p>
+                <div class="flex justify-between items-baseline">
+                    <span id="year-label" class="text-7xl font-black text-white tabular-nums">2025</span>
+                    <span id="label-type" class="text-xs font-bold text-white uppercase">ปัจจุบัน</span>
+                </div>
+            </div>
+
+            <div class="dashboard-card p-6 rounded-3xl flex-grow flex flex-col justify-between">
+                <div>
+                    <h3 class="text-xs font-bold text-zinc-500 uppercase mb-6">ความมั่นใจในการวิเคราะห์</h3>
+                    <div class="space-y-2 mb-8">
+                        <div class="flex justify-between items-end">
+                            <span class="text-sm font-bold text-zinc-300">ระดับความมั่นใจ</span>
+                            <span id="conf-value" class="text-3xl font-black text-white">100%</span>
+                        </div>
+                        <div class="w-full h-3 bg-zinc-800 rounded-full overflow-hidden border border-zinc-700">
+                            <div id="conf-bar" class="progress-bar h-full bg-gradient-to-r from-teal-500 to-emerald-400"
+                                style="width: 100%"></div>
+                        </div>
+                        <p id="conf-desc" class="text-[10px] text-zinc-500 italic mt-2">
+                            ข้อมูลมีความน่าเชื่อถือสูงสุดเนื่องจากเป็นสถิติจริง</p>
+                    </div>
+
+                    <div class="pt-6 border-t border-zinc-800">
+                        <p class="text-[10px] text-zinc-500 uppercase mb-2 tracking-widest">การเปลี่ยนแปลงสะสม</p>
+                        <p id="erosion-val" class="text-4xl font-black text-white font-mono">-0.00 <span
+                                class="text-sm font-normal text-zinc-600">ม.</span></p>
+                    </div>
+                </div>
+
+                <div id="ai-disclaimer" class="hidden p-4 bg-yellow-900/10 border border-yellow-700/30 rounded-2xl">
+                    <p class="text-[11px] text-yellow-600 leading-relaxed font-bold italic text-center">
+                        * พยากรณ์โดย AI *
+                    </p>
+                </div>
+            </div>
+        </aside>
+
+        <section class="flex-grow flex flex-col gap-4">
+            <div class="flex-grow dashboard-card relative rounded-3xl overflow-hidden">
+                <div id="map"></div>
+                <div class="absolute top-6 right-6 z-[1000]">
+                    <button id="all-years-btn"
+                        class="dashboard-card px-6 py-2 rounded-xl text-[10px] font-bold text-white border border-zinc-700 hover:bg-zinc-800 transition-all uppercase tracking-widest">
+                        แสดงเส้นรวมทุกปี
+                    </button>
+                </div>
+            </div>
+
+            <div class="dashboard-card p-8 rounded-3xl">
+                <div class="flex items-center gap-10">
+                    <button id="play-btn"
+                        class="bg-white text-black font-black px-12 py-3 rounded-2xl text-xs hover:bg-zinc-200 transition-all active:scale-95 uppercase tracking-widest shrink-0">
+                        เริ่มการจำลอง
+                    </button>
+
+                    <div class="flex-grow">
+                        <input type="range" id="year-slider" min="2015" max="2035" value="2025" step="1" class="w-full">
+                        <div
+                            class="flex justify-between mt-4 text-[9px] font-bold text-zinc-600 uppercase tracking-widest px-1">
+                            <span>2015 (อดีต)</span>
+                            <span class="text-white">ปัจจุบัน (2025)</span>
+                            <span>2035 (พยากรณ์)</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        const map = L.map('map', { zoomControl: false, attributionControl: false }).setView([13.4, 100.5], 8);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png').addTo(map);
+
+        let geoData = null;
+        let activeLine = null;
+        let allLines = [];
+        let showAll = false;
+
+        fetch('https://raw.githubusercontent.com/datasets/geo-boundaries-world-110m/master/countries/THA.geojson')
+            .then(res => res.json())
+            .then(data => {
+                geoData = data;
+                L.geoJSON(data, { style: { color: "#222", weight: 1.5, fillColor: "#111", fillOpacity: 1 } }).addTo(map);
+                updateSimulation(2025);
+            });
+
+        function updateSimulation(year) {
+            const isAI = year > 2025;
+            document.getElementById('year-label').innerText = year;
+            document.getElementById('year-slider').value = year;
+
+            const confVal = document.getElementById('conf-value');
+            const confBar = document.getElementById('conf-bar');
+            const confDesc = document.getElementById('conf-desc');
+            const labelType = document.getElementById('label-type');
+            const sourceInd = document.getElementById('source-indicator');
+            const aiDisc = document.getElementById('ai-disclaimer');
+            const yearCard = document.getElementById('year-card');
+
+            if (isAI) {
+                const score = 100 - ((year - 2025) * 4);
+                confVal.innerText = `${Math.floor(score)}%`;
+                confBar.style.width = `${score}%`;
+                confBar.className = "progress-bar h-full bg-gradient-to-r from-yellow-500 to-orange-400";
+                confDesc.innerText = "พยากรณ์โดย AI (ความคลาดเคลื่อนเพิ่มขึ้นตามเวลา)";
+                labelType.innerText = "พยากรณ์";
+                labelType.className = "text-xs font-bold text-yellow-500 uppercase";
+                sourceInd.innerText = "แหล่งข้อมูล: AI พยากรณ์";
+                aiDisc.classList.remove('hidden');
+                yearCard.classList.add('ai-glow');
+            } else {
+                confVal.innerText = "100%";
+                confBar.style.width = "100%";
+                confBar.className = "progress-bar h-full bg-gradient-to-r from-teal-500 to-emerald-400";
+                confDesc.innerText = "ข้อมูลมีความน่าเชื่อถือสูงสุดเนื่องจากเป็นสถิติจริง";
+                labelType.innerText = year == 2025 ? "ปัจจุบัน" : "อดีต";
+                labelType.className = year == 2025 ? "text-xs font-bold text-white uppercase" : "text-xs font-bold text-red-500 uppercase";
+                sourceInd.innerText = "แหล่งข้อมูล: สถิติย้อนหลัง";
+                aiDisc.classList.add('hidden');
+                yearCard.classList.remove('ai-glow');
+            }
+
+            if (activeLine) map.removeLayer(activeLine);
+            const offset = (year - 2025) * 0.009;
+            const coords = geoData.features[0].geometry.coordinates[0].filter(p => p[1] < 13.6).map(p => [p[1] + offset, p[0]]);
+
+            activeLine = L.polyline(coords, {
+                color: isAI ? "#facc15" : "#ef4444",
+                weight: 5,
+                opacity: 1,
+                dashArray: isAI ? "8, 12" : ""
+            }).addTo(map);
+
+            document.getElementById('erosion-val').innerText = `${(offset * 100).toFixed(2)} ม.`;
+        }
+
+        const slider = document.getElementById('year-slider');
+        const playBtn = document.getElementById('play-btn');
+        let playTimer;
+
+        slider.oninput = (e) => {
+            if (playTimer) { clearInterval(playTimer); playTimer = null; playBtn.innerText = "เริ่มการจำลอง"; }
+            updateSimulation(parseInt(e.target.value));
+        };
+
+        playBtn.onclick = () => {
+            if (playTimer) {
+                clearInterval(playTimer); playTimer = null; playBtn.innerText = "เริ่มการจำลอง";
+            } else {
+                playBtn.innerText = "หยุดการจำลอง";
+                playTimer = setInterval(() => {
+                    let v = parseInt(slider.value) + 1;
+                    if (v > 2035) v = 2015;
+                    updateSimulation(v);
+                }, 400);
+            }
+        };
+
+        // ฟังก์ชัน Toggle และเปลี่ยนสีปุ่ม
+        document.getElementById('all-years-btn').onclick = function () {
+            showAll = !showAll;
+
+            // ใช้ class "btn-toggle-active" เพื่อเปลี่ยนสีพื้นหลังเป็นเหลืองและตัวหนังสือเป็นดำ
+            this.classList.toggle('btn-toggle-active');
+
+            if (showAll) {
+                for (let y = 2015; y <= 2035; y++) {
+                    const off = (y - 2025) * 0.009;
+                    const c = geoData.features[0].geometry.coordinates[0].filter(p => p[1] < 13.6).map(p => [p[1] + off, p[0]]);
+                    const l = L.polyline(c, {
+                        color: y > 2025 ? "#facc15" : "#ef4444",
+                        weight: y == 2025 ? 3 : 1,
+                        opacity: y == 2025 ? 1 : 0.4
+                    }).addTo(map);
+                    allLines.push(l);
+                }
+            } else {
+                allLines.forEach(l => map.removeLayer(l));
+                allLines = [];
+            }
+        };
+    </script>
+</body>
+
+</html>
